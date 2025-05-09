@@ -198,6 +198,16 @@ verify_spatial <- function(dttm,
   #        BUT: we need it once to initialise the regridding. Use "get_domain(file)".
   # FIXME: should we do the regridding within the read_grid call?
 
+  try_readob <- function(obfile,ob_file_format,input_ob_param,ob_file_opts,ob_param_defs) {
+    out <- try(do.call(harpIO::read_grid,
+                       c(list(file_name        = obfile,
+                              file_format      = ob_file_format,
+                              parameter        = input_ob_param,
+                              file_format_opts = ob_file_opts,
+                              param_defs       = ob_param_defs))),
+               silent = TRUE) 
+    return(out)
+  }
   get_ob <- function(obdate) {
     obfile <- generate_filenames(
       file_date     = format(obdate, "%Y%m%d%H"),
@@ -206,13 +216,11 @@ verify_spatial <- function(dttm,
       parameter     = ob_param
     )
     # FIXME: first check that the file exists! Avoid Errors. Use 
-    try(do.call(harpIO::read_grid,
-                  c(list(file_name        = obfile,
-			 file_format      = ob_file_format,
-			 parameter        = ob_param$basename,
-			 file_format_opts = ob_file_opts,
-			 param_defs       = ob_param_defs))),
-        silent = TRUE) 
+    out <- try_readob(obfile,ob_file_format,ob_param$basename,ob_file_opts,ob_param_defs)
+    if (inherits(out,"try-error")) {
+      out <- try_readob(obfile,ob_file_format,ob_param,ob_file_opts,ob_param_defs)
+    }
+    return(out)
   }
 
   # FIXME: if (!is.null(members) && length(members) > 1)
