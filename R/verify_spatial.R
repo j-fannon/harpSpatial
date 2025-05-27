@@ -120,6 +120,10 @@ verify_spatial <- function(dttm,
                            percentiles          = c(25, 50, 75, 90, 95),
                            sqlite_path          = harpSpatial_conf$sqlite_path, #NULL,
                            sqlite_file          = harpSpatial_conf$sqlite_file, #"harp_spatial_scores.sqlite",
+                           qc_check_obs_NA      = FALSE,
+                           qc_check_obs_g_thr   = NULL,
+                           qc_check_for_g_thr   = NULL,
+                           qc_check_percentiles = FALSE,
                            return_data          = FALSE,
 			   return_fields        = FALSE) {
 
@@ -365,6 +369,24 @@ verify_spatial <- function(dttm,
       }
       obfield <- meteogrid::regrid(obfield, weights = init$regrid_ob)
     }
+    
+    # Apply optional QC checks
+    if (qc_check_obs_NA) {
+      num_obs_NA <- sum(is.na(obfield))
+      if (num_obs_NA > 0) {
+        message("QC: Found ",num_obs_NA," NAs in the obfield, skipping\n")
+        next
+      }
+    }
+    if (!is.null(qc_check_obs_g_thr)) {
+      qc_check_obs_g_thr <- as.double(qc_check_obs_g_thr)
+      if (max(obfield,na.rm = T) <= qc_check_obs_g_thr) {
+        message("QC: The maxmium in obfield (",max(obfield,na.rm = T),
+                ") is below the specfied threshold of ",qc_check_obs_g_thr,
+                " , skipping\n")
+        next
+      }
+    }
 
     # find forecasts valid for this date/time
     # intersect drops the POSIXct class
@@ -452,6 +474,36 @@ verify_spatial <- function(dttm,
 
       # FIXME: Some scores (e.g. SAL) have various other parameters that we can't pass yet...
       #        While others don't need any
+      
+      # Apply optional QC checks
+      if (!is.null(qc_check_for_g_thr)) {
+        qc_check_for_g_thr <- as.double(qc_check_for_g_thr)
+        if (max(fcfield,na.rm = T) <= qc_check_for_g_thr) {
+          message("QC: The maxmium in fcfield (",max(fcfield,na.rm = T),
+                  ") is below the specfied threshold of ",qc_check_for_g_thr,
+                  " , skipping\n")
+          next
+        }
+      }
+      # Apply percentile check i.e. no observed or forecasted rain
+      if ((qc_check_percentiles) && (!is.null(percentiles))) {
+        perc <- append(0, percentiles) %>% append(., 100)
+        ob_p_threshold <- quantile(obfield, probs = perc/100, na.rm=TRUE)
+        fc_p_threshold <- quantile(fcfield, probs = perc/100, na.rm=TRUE)
+        if (length(unique(ob_p_threshold)) == 1) {
+          message("QC: Skipping due to obs percentile check where ob_p_threshold = ",
+                  unique(ob_p_threshold)," for percentiles ",
+                  paste0(perc,collapse = ","),"\n")
+          next
+        }
+        if (length(unique(fc_p_threshold)) == 1) {
+          message("QC: Skipping due to forceast percentile check where fc_p_threshold = ",
+                  unique(fc_p_threshold)," for percentiles ",
+                  paste0(perc,collapse = ","),"\n")
+          next
+        }
+      }
+      
       for (sf in score_function_list) {
         # get the required arguments for this function
         # NOTE: args() only works if the function is found
