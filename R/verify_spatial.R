@@ -557,7 +557,7 @@ verify_spatial <- function(dttm,
   }
 
   ## write to SQLite
-  if (!is.null(sqlite_file)) {
+  if ((!is.null(sqlite_file)) && (!is.null(score_tables[[1]]))) {
     save_spatial_verif(score_tables, sqlite_path, sqlite_file)
   }
 
