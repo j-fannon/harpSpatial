@@ -214,7 +214,7 @@ verify_spatial <- function(dttm,
   }
   get_ob <- function(obdate) {
     obfile <- generate_filenames(
-      file_date     = format(obdate, "%Y%m%d%H"),
+      file_date     = format(obdate, "%Y%m%d%H%M"),
       file_path     = ob_file_path,
       file_template = ob_file_template,
       parameter     = ob_param
@@ -301,6 +301,8 @@ verify_spatial <- function(dttm,
 
 
   message("score functions: ", paste(score_function_list, collapse=" "))
+  # Add a data frame to contain info about qc
+  qc_df <- NULL
   # MAIN LOOP
   case <- 1
   for (ob in seq_along(all_ob_dates)) {  # (obdate in all_ob_dates) looses POSIXct class
@@ -309,6 +311,9 @@ verify_spatial <- function(dttm,
     obfield <- get_ob(obdate)
     if (inherits(obfield, "try-error")) { # e.g. missing observation
       message("Observation not found. Skipping.\n")
+      qc_df <- add_qc_info(qc_df = qc_df,
+                           qc_ind = "Observation not found",
+                           obs_dttm = obdate)
       next
     }
 
@@ -321,6 +326,9 @@ verify_spatial <- function(dttm,
         if (inherits(zstep, "try-error")) {
               message("Observation accumulation sub-step not found. Skipping.\n")
               skip_obs <- TRUE
+              qc_df <- add_qc_info(qc_df = qc_df,
+                                   qc_ind = "Observation accumulation sub-step not found",
+                                   obs_dttm = obdate)
               next
         }
         obfield <- obfield - zstep
@@ -338,6 +346,9 @@ verify_spatial <- function(dttm,
             if (inherits(zstep, "try-error")) {
               message("Observation sub-step not found.\n")
               skip_obs <- TRUE
+              qc_df <- add_qc_info(qc_df = qc_df,
+                                   qc_ind = "Observation sub-step not found",
+                                   obs_dttm = obdate)
               next
             }
             obfield <- obfield + zstep
@@ -375,6 +386,9 @@ verify_spatial <- function(dttm,
       num_obs_NA <- sum(is.na(obfield))
       if (num_obs_NA > 0) {
         message("QC: Found ",num_obs_NA," NAs in the obfield, skipping\n")
+        qc_df <- add_qc_info(qc_df = qc_df,
+                             qc_ind = paste0(num_obs_NA," NAs in obs"),
+                             obs_dttm = obdate)
         next
       }
     }
@@ -384,6 +398,9 @@ verify_spatial <- function(dttm,
         message("QC: The maxmium in obfield (",max(obfield,na.rm = T),
                 ") is below the specfied threshold of ",qc_check_obs_g_thr,
                 " , skipping\n")
+        qc_df <- add_qc_info(qc_df = qc_df,
+                             qc_ind = paste0("Max obs below ",qc_check_obs_g_thr),
+                             obs_dttm = obdate)
         next
       }
     }
@@ -405,6 +422,12 @@ verify_spatial <- function(dttm,
       fcfield <- get_fc(fcdate, ldt/lt_scale)
       if (inherits(fcfield, "try-error")) { # e.g. missing forecast run
         message("..... Forecast not found. Skipping.", immediate = TRUE)
+        qc_df <- add_qc_info(qc_df = qc_df,
+                             qc_ind = paste0("Forecast not found"),
+                             obs_dttm = obdate,
+                             fcst_model = fcst_model,
+                             fcst_dttm = fcdate,
+                             lead_time = ldt/lt_scale)
         next
       }
       if (prm$accum > 0) {
@@ -413,6 +436,12 @@ verify_spatial <- function(dttm,
             zstep <- get_fc(fcdate, (ldt - prm$accum) / lt_scale)
             if (inherits(zstep, "try-error")) { # e.g. missing forecast run
                message("..... Forecast not found. Skipping.", immediate = TRUE)
+               qc_df <- add_qc_info(qc_df = qc_df,
+                                    qc_ind = paste0("Forecast not found"),
+                                    obs_dttm = obdate,
+                                    fcst_model = fcst_model,
+                                    fcst_dttm = fcdate,
+                                    lead_time = (ldt-prm$accum)/lt_scale)
                next
             }
 
@@ -435,6 +464,12 @@ verify_spatial <- function(dttm,
               if (inherits(zstep, "try-error")) { # e.g. missing forecast
                 message("..... Forecast sub-step not found.", immediate = TRUE)
                 skip_fc <- TRUE
+                qc_df <- add_qc_info(qc_df = qc_df,
+                                     qc_ind = paste0("Forecast sub-step not found"),
+                                     obs_dttm = obdate,
+                                     fcst_model = fcst_model,
+                                     fcst_dttm = fcdate,
+                                     lead_time = ldt/lt_scale)
                 next
               }
 
@@ -482,6 +517,12 @@ verify_spatial <- function(dttm,
           message("QC: The maxmium in fcfield (",max(fcfield,na.rm = T),
                   ") is below the specfied threshold of ",qc_check_for_g_thr,
                   " , skipping\n")
+          qc_df <- add_qc_info(qc_df = qc_df,
+                               qc_ind = paste0("Max forecast below ",qc_check_for_g_thr),
+                               obs_dttm = obdate,
+                               fcst_model = fcst_model,
+                               fcst_dttm = fcdate,
+                               lead_time = ldt/lt_scale)
           next
         }
       }
@@ -494,12 +535,21 @@ verify_spatial <- function(dttm,
           message("QC: Skipping due to obs percentile check where ob_p_threshold = ",
                   unique(ob_p_threshold)," for percentiles ",
                   paste0(perc,collapse = ","),"\n")
+          qc_df <- add_qc_info(qc_df = qc_df,
+                               qc_ind = paste0("Obs percentiles are equal (",unique(ob_p_threshold),")"),
+                               obs_dttm = obdate)
           next
         }
         if (length(unique(fc_p_threshold)) == 1) {
           message("QC: Skipping due to forceast percentile check where fc_p_threshold = ",
                   unique(fc_p_threshold)," for percentiles ",
                   paste0(perc,collapse = ","),"\n")
+          qc_df <- add_qc_info(qc_df = qc_df,
+                               qc_ind = paste0("Forecast percentiles are equal (",unique(fc_p_threshold),")"),
+                               obs_dttm = obdate,
+                               fcst_model = fcst_model,
+                               fcst_dttm = fcdate,
+                               lead_time = ldt/lt_scale)
           next
         }
       }
@@ -565,6 +615,10 @@ verify_spatial <- function(dttm,
 	  score_tables <- append(score_tables, list("obfield"= obfield))
 	  score_tables <- append(score_tables, list("fcfield"= fcfield))
   }
+  
+  if (return_data & (!is.null(qc_df))) {
+    score_tables <- append(score_tables,list("qc_df" = as.data.frame(qc_df)))
+  }
 
   if (return_data) invisible(score_tables)
   else invisible(NULL)
@@ -593,3 +647,26 @@ save_spatial_verif <- function(score_tables, sqlite_path, sqlite_file) {
   harpIO:::dbclose(db)
 }
 
+add_qc_info <- function(qc_df      = NULL,
+                        qc_ind     = "Message",
+                        obs_dttm   = NA_character_,
+                        fcst_model = NA_character_,
+                        fcst_dttm  = NA_character_,
+                        lead_time  = NA_character_) {
+  
+  qwe <- NULL
+  qwe$obs_dttm   <- obs_dttm
+  qwe$fcst_model <- fcst_model
+  qwe$fcst_dttm  <- fcst_dttm
+  qwe$lead_time  <- lead_time
+  qwe$qc_ind     <- qc_ind
+  
+  if (is.null(qc_df)) {
+    df_out <- qwe
+  } else {
+    df_out <- bind_rows(qc_df,qwe)    
+  }
+
+  return(df_out)
+  
+}
