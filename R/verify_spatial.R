@@ -655,10 +655,10 @@ add_qc_info <- function(qc_df      = NULL,
                         lead_time  = NA_character_) {
   
   qwe <- NULL
-  qwe$obs_dttm   <- obs_dttm
+  qwe$obs_dttm   <- harpCore::as_ymdhm(obs_dttm)
   qwe$fcst_model <- fcst_model
-  qwe$fcst_dttm  <- fcst_dttm
-  qwe$lead_time  <- lead_time
+  qwe$fcst_dttm  <- harpCore::as_ymdhm(fcst_dttm)
+  qwe$lead_time  <- as.character(lead_time)
   qwe$qc_ind     <- qc_ind
   
   if (is.null(qc_df)) {
