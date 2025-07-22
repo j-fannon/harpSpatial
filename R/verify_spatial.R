@@ -664,7 +664,7 @@ add_qc_info <- function(qc_df      = NULL,
   if (is.null(qc_df)) {
     df_out <- qwe
   } else {
-    df_out <- bind_rows(qc_df,qwe)    
+    df_out <- dplyr::bind_rows(qc_df,qwe)    
   }
 
   return(df_out)
